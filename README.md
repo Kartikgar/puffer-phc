@@ -4,7 +4,7 @@ This is a simplified version of the [Perpetual Humanoid Control](https://github.
 
 This project was sponsored by [Puffer AI](https://puffer.ai/). If you like what you see, please contact [Puffer AI for priority service](https://puffer.ai/product.html).
 
-This repo implements only the single primitive model, which can perform 99.0% of the AMASS 11313 motions. See the [wandb log](https://wandb.ai/kywch/pufferlib/runs/morph-93bb6039) for training details.
+This repo implements only the single primitive model, which can perform 99.0% of the AMASS 11313 motions. See the [wandb log](https://wandb.ai/kywch/pufferlib/runs/morph-93bb6039) for training details. The AMASS checkpoints are shared in the [onedrive folder](https://1drv.ms/f/c/aa549e3baa3afd7f/Esw-q2bneRZGrEAJl3tvrtABFi6m6zIHfFhkJH0Z0VOkWw?e=GWdnub).
 
 <div float="center">
   <img src="sample_data/cmu_mocap_05_06.gif" />
