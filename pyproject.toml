@@ -8,9 +8,8 @@ authors = [
     { name = "Kyoung Whan Choe", email = "choe.kyoung@gmail.com" },
 ]
 requires-python = ">=3.8,<3.9"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
-    "pufferlib@git+https://github.com/kywch/PufferLib.git",
     "smpl_sim@git+https://github.com/kywch/SMPLSim.git",
     "chumpy@git+https://github.com/nico-von-huene/chumpy.git",
     "carbs@git+https://github.com/PufferAI/carbs.git",    
@@ -46,6 +45,9 @@ torchvision = ">=0.18.1,<0.19"
 scipy = ">=1.10.1,<2"
 imageio = ">=2.36.0,<3"
 fsspec = ">=2024.10.0,<2025"
+
+[tool.pixi.pypi-dependencies]
+pufferlib = { git = "https://github.com/kywch/PufferLib.git", branch = "isaacgym" }
 
 [tool.pixi.activation]
 scripts = ["env_setup.sh"]
