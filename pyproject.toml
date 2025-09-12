@@ -15,6 +15,9 @@ dependencies = [
     "carbs@git+https://github.com/PufferAI/carbs.git",    
 ]
 
+[tool.setuptools.packages.find]
+include = ["puffer_phc*"]
+
 [tool.pixi.project]
 channels = ["pytorch", "nvidia", "conda-forge"]
 platforms = ["linux-64"]
