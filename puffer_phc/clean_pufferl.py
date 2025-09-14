@@ -284,26 +284,51 @@ def train(data):
                 if config.norm_adv:
                     adv = (adv - adv.mean()) / (adv.std() + 1e-8)
 
-                # Policy loss
-                pg_loss1 = -adv * ratio
-                pg_loss2 = -adv * torch.clamp(ratio, 1 - config.clip_coef, 1 + config.clip_coef)
-                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-
-                # Value loss
-                newvalue = newvalue.view(-1)
-                if config.clip_vloss:
-                    v_loss_unclipped = (newvalue - ret) ** 2
-                    v_clipped = val + torch.clamp(
-                        newvalue - val,
-                        -config.vf_clip_coef,
-                        config.vf_clip_coef,
+                # Check if using FPO
+                if hasattr(data, 'use_fpo') and data.use_fpo:
+                    # Use FPO custom loss computation
+                    fpo_losses = data.policy.policy.compute_fpo_loss(
+                        obs.reshape(-1, *data.vecenv.single_observation_space.shape),
+                        atn,
+                        adv,
+                        val,
+                        ret
                     )
-                    v_loss_clipped = (v_clipped - ret) ** 2
-                    v_loss = torch.max(v_loss_unclipped, v_loss_clipped).mean()
+                    
+                    pg_loss = fpo_losses['policy_loss']
+                    v_loss = fpo_losses['value_loss'] 
+                    entropy_loss = fpo_losses['entropy_loss']
+                    
+                    # Log FPO-specific metrics
+                    if hasattr(data, 'wandb') and data.wandb:
+                        data.wandb.log({
+                            'fpo/ratio_mean': fpo_losses['fpo_ratio'].item(),
+                            'fpo/ratio_min': fpo_losses['fpo_ratio_min'].item(),
+                            'fpo/ratio_max': fpo_losses['fpo_ratio_max'].item(),
+                            'fpo/cfm_difference': fpo_losses['cfm_difference'].item(),
+                        })
                 else:
-                    v_loss = ((newvalue - ret) ** 2).mean()
+                    # Standard PPO loss computation
+                    # Policy loss
+                    pg_loss1 = -adv * ratio
+                    pg_loss2 = -adv * torch.clamp(ratio, 1 - config.clip_coef, 1 + config.clip_coef)
+                    pg_loss = torch.max(pg_loss1, pg_loss2).mean()
 
-                entropy_loss = entropy.mean()
+                    # Value loss
+                    newvalue = newvalue.view(-1)
+                    if config.clip_vloss:
+                        v_loss_unclipped = (newvalue - ret) ** 2
+                        v_clipped = val + torch.clamp(
+                            newvalue - val,
+                            -config.vf_clip_coef,
+                            config.vf_clip_coef,
+                        )
+                        v_loss_clipped = (v_clipped - ret) ** 2
+                        v_loss = torch.max(v_loss_unclipped, v_loss_clipped).mean()
+                    else:
+                        v_loss = ((newvalue - ret) ** 2).mean()
+
+                    entropy_loss = entropy.mean()
                 loss = pg_loss - config.ent_coef * entropy_loss + v_loss * config.vf_coef
 
                 # Discriminator loss

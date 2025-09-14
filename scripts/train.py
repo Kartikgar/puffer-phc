@@ -247,7 +247,17 @@ def train(args, vec_env, policy, wandb=None, exp_id=None, skip_resample=False, f
         exp_id = args["env_name"] + "-" + str(uuid.uuid4())[:8]
 
     train_config = pufferlib.namespace(**args["train"], env=args["env_name"], exp_id=exp_id)
-    data = clean_pufferl.create(train_config, vec_env, policy, wandb=wandb)
+    
+    # Check if using FPO policy
+    use_fpo = hasattr(policy.policy, '_fpo_mode') and policy.policy._fpo_mode
+    if use_fpo:
+        print("Using FPO training mode")
+        # Modify clean_pufferl data creation to support FPO
+        data = clean_pufferl.create(train_config, vec_env, policy, wandb=wandb)
+        data.use_fpo = True
+    else:
+        data = clean_pufferl.create(train_config, vec_env, policy, wandb=wandb)
+        data.use_fpo = False
 
     data_dir = os.path.join(train_config.data_dir, exp_id)
     os.makedirs(data_dir, exist_ok=True)
@@ -632,6 +642,12 @@ if __name__ == "__main__":
     if args["mode"] == "sweep":
         sweep_carbs(args, sweep_count=500)
         sys.exit(0)
+
+    # Check if using FPO
+    if args.get("fpo", {}).get("use_fpo", False):
+        args["policy_name"] = "FPOPolicy"
+        # Add FPO params to policy args
+        args["policy"].update(args.get("fpo", {}))
 
     # Create the env and policy
     vec_env = pufferlib.vector.make(env_creator, env_kwargs=args["env"])
