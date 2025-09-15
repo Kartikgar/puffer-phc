@@ -364,6 +364,7 @@ import torch.nn.functional as F
 import numpy as np
 from .diffusion_policy import DiffusionPolicy
 from .network import FeedForwardNN
+import torch.distributions
 
 
 @dataclass
@@ -375,39 +376,54 @@ class FpoActionInfo:
     initial_cfm_loss: torch.Tensor # (*,)
 
 
-class FPODistribution:
+class FPODistribution(torch.distributions.Distribution):
     """
-    A distribution-like wrapper for FPO that provides the interface expected by pufferlib.
-    This stores the FPO-specific action information needed for training.
+    PyTorch distribution wrapper for FPO that provides the interface expected by pufferlib.
     """
     def __init__(self, action_info: FpoActionInfo, batch_size: int, action_dim: int, device: str):
         self.action_info = action_info
-        self.batch_size = batch_size
-        self.action_dim = action_dim
-        self.device = device
+        self.device_str = device
         
-    def sample(self):
-        # Return the predicted actions from FPO
-        # action_info.x_t_path contains the full diffusion path, final action is at the end
-        if self.action_info.x_t_path.ndim == 3:  # [batch, steps, action_dim]
-            return self.action_info.x_t_path[:, -1, :]  # Take final step
+        # Get the final actions from diffusion process
+        if action_info.x_t_path.ndim == 3:  # [batch, steps, action_dim]
+            self.actions = action_info.x_t_path[:, -1, :]  # Take final step
         else:  # [steps, action_dim] - single sample
-            return self.action_info.x_t_path[-1:, :].expand(self.batch_size, -1)
+            self.actions = action_info.x_t_path[-1:, :].expand(batch_size, -1)
+        
+        # Create a dummy Normal distribution for compatibility
+        # We'll override the methods we need
+        self.loc = self.actions  # Mean of the "distribution"
+        self.scale = torch.ones_like(self.actions) * 0.1  # Small std for deterministic-like behavior
+        
+        # Initialize the parent Distribution class
+        super().__init__(batch_shape=self.loc.shape[:-1], event_shape=self.loc.shape[-1:])
+        
+    def sample(self, sample_shape=torch.Size()):
+        """Return the predicted actions from FPO diffusion process"""
+        if sample_shape == torch.Size():
+            return self.actions
+        else:
+            # Handle additional sample dimensions if needed
+            shape = sample_shape + self.actions.shape
+            return self.actions.expand(shape)
     
-    def log_prob(self, actions):
-        """
-        For FPO, we compute log probability differently using the CFM loss.
-        This is where the FPO-specific computation happens.
-        """
-        # This will be computed in the policy's custom loss computation
-        # For now, return zeros for compatibility
-        return torch.zeros(actions.shape[0], device=self.device)
+    def log_prob(self, value):
+        """For FPO, return zeros for compatibility - actual computation happens in loss"""
+        return torch.zeros(value.shape[:-1], device=self.actions.device)
     
     def entropy(self):
-        """
-        FPO doesn't have traditional entropy. Return zeros for compatibility.
-        """
-        return torch.zeros(self.batch_size, device=self.device)
+        """FPO doesn't have traditional entropy. Return zeros for compatibility."""
+        return torch.zeros(self.actions.shape[:-1], device=self.actions.device)
+    
+    @property
+    def mean(self):
+        """Return the mean (which is just our deterministic actions)"""
+        return self.actions
+    
+    @property
+    def variance(self):
+        """Return small variance for compatibility"""
+        return torch.ones_like(self.actions) * 0.01
 
 
 class FPOPolicy(PolicyWithDiscriminator):
@@ -439,16 +455,20 @@ class FPOPolicy(PolicyWithDiscriminator):
         )
         
         # Keep the regular critic from parent class but create it explicitly
-        # self.critic_mlp = nn.Sequential(
-        #     layer_init(nn.Linear(self.input_size, 1024)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Linear(1024, 512)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Linear(512, 256)),
-        #     nn.ReLU(),
-        #     layer_init(nn.Linear(256, 1), std=0.01),
-        # )
-        
+        self.critic_mlp = nn.Sequential(
+            layer_init(nn.Linear(self.input_size, 1024)),
+            nn.ReLU(),
+            layer_init(nn.Linear(1024, 1024)),
+            # nn.LayerNorm(1024),
+            nn.ReLU(),
+            layer_init(nn.Linear(1024, 512)),
+            # nn.LayerNorm(512),
+            nn.ReLU(),
+            layer_init(nn.Linear(512, 256)),
+            # nn.LayerNorm(256),
+            nn.ReLU(),
+            layer_init(nn.Linear(256, 1), std=0.01),
+        )
         # Storage for FPO-specific data during rollout
         self.stored_action_info = None
         self._fpo_mode = True  # Flag to indicate FPO mode

@@ -594,6 +594,7 @@ if __name__ == "__main__":
     parser.add_argument("--final-eval", action="store_true", help="Final evaluation")
     parser.add_argument("--num_envs", type=int, default=4096, help="Number of environments")
     parser.add_argument("--exp_name", type=str, default="puffer_phc", help="Experiment name")
+    parser.add_argument("--use_fpo", action="store_true", help="Use FPO policy")
 
     args = parser.parse_known_args()[0]
 
@@ -647,7 +648,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # Check if using FPO
-    if args.get("fpo", {}).get("use_fpo", False):
+    if args.get("use_fpo", False):
         args["policy_name"] = "FPOPolicy"
         # Add FPO params to policy args
         args["policy"].update(args.get("fpo", {}))
@@ -667,7 +668,7 @@ if __name__ == "__main__":
 
     # Train or evaluate
     if args["mode"] == "train":
-        train(args, vec_env, policy, exp_name=args["exp_name"])
+        train(args, vec_env, policy, exp_id=args["exp_name"])
 
     elif args["mode"] == "play":
         # Just to play and render without collecting stats
