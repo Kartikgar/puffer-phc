@@ -385,10 +385,28 @@ class FPODistribution(torch.distributions.Distribution):
         self.device_str = device
         
         # Get the final actions from diffusion process
-        if action_info.x_t_path.ndim == 3:  # [batch, steps, action_dim]
-            self.actions = action_info.x_t_path[:, -1, :]  # Take final step
-        else:  # [steps, action_dim] - single sample
-            self.actions = action_info.x_t_path[-1:, :].expand(batch_size, -1)
+        x_t_path = action_info.x_t_path
+        
+        if x_t_path.ndim == 4:  # [batch, 1, steps, action_dim] - stacked batch
+            self.actions = x_t_path[:, 0, -1, :]  # Take final step from each batch item
+        elif x_t_path.ndim == 3:  # [batch, steps, action_dim] or [1, steps, action_dim]
+            self.actions = x_t_path[:, -1, :]  # Take final step
+            if self.actions.shape[0] == 1 and batch_size > 1:
+                # Single sample, expand to batch
+                self.actions = self.actions.expand(batch_size, -1)
+        elif x_t_path.ndim == 2:  # [steps, action_dim] - single sample
+            self.actions = x_t_path[-1:, :]  # Take final step
+            if batch_size > 1:
+                self.actions = self.actions.expand(batch_size, -1)
+        else:
+            raise ValueError(f"Unexpected x_t_path dimensions: {x_t_path.shape}")
+        
+        # Ensure actions have correct batch dimension
+        if self.actions.shape[0] != batch_size:
+            if self.actions.shape[0] == 1:
+                self.actions = self.actions.expand(batch_size, -1)
+            else:
+                raise ValueError(f"Action batch size {self.actions.shape[0]} doesn't match expected {batch_size}")
         
         # Create a dummy Normal distribution for compatibility
         # We'll override the methods we need
