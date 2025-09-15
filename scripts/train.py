@@ -592,6 +592,8 @@ if __name__ == "__main__":
     parser.add_argument("--ssc-lr", type=float, default=0.0001, help="Sweep search center for learning rate")
     parser.add_argument("--skip-resample", action="store_true", help="Skip resampling motions")
     parser.add_argument("--final-eval", action="store_true", help="Final evaluation")
+    parser.add_argument("--num_envs", type=int, default=4096, help="Number of environments")
+    parser.add_argument("--exp_name", type=str, default="puffer_phc", help="Experiment name")
 
     args = parser.parse_known_args()[0]
 
@@ -629,6 +631,7 @@ if __name__ == "__main__":
 
     # Create the environment
     args["env"]["name"] = args["env_name"]
+    args["env"]["num_envs"] = args["num_envs"]
     args["env"]["device_type"] = device
     if args["motion_file"]:
         args["env"]["motion_file"] = args["motion_file"]
@@ -664,7 +667,7 @@ if __name__ == "__main__":
 
     # Train or evaluate
     if args["mode"] == "train":
-        train(args, vec_env, policy)
+        train(args, vec_env, policy, exp_name=args["exp_name"])
 
     elif args["mode"] == "play":
         # Just to play and render without collecting stats
