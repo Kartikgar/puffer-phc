@@ -380,6 +380,9 @@ class FPODistribution(torch.distributions.Distribution):
     """
     PyTorch distribution wrapper for FPO that provides the interface expected by pufferlib.
     """
+    # Add arg_constraints to satisfy PyTorch distribution requirements
+    arg_constraints = {}
+    
     def __init__(self, action_info: FpoActionInfo, batch_size: int, action_dim: int, device: str):
         self.action_info = action_info
         self.device_str = device
@@ -413,8 +416,8 @@ class FPODistribution(torch.distributions.Distribution):
         self.loc = self.actions  # Mean of the "distribution"
         self.scale = torch.ones_like(self.actions) * 0.1  # Small std for deterministic-like behavior
         
-        # Initialize the parent Distribution class
-        super().__init__(batch_shape=self.loc.shape[:-1], event_shape=self.loc.shape[-1:])
+        # Initialize the parent Distribution class with validate_args=False to avoid warnings
+        super().__init__(batch_shape=self.loc.shape[:-1], event_shape=self.loc.shape[-1:], validate_args=False)
         
     def sample(self, sample_shape=torch.Size()):
         """Return the predicted actions from FPO diffusion process"""
@@ -426,8 +429,18 @@ class FPODistribution(torch.distributions.Distribution):
             return self.actions.expand(shape)
     
     def log_prob(self, value):
-        """For FPO, return zeros for compatibility - actual computation happens in loss"""
-        return torch.zeros(value.shape[:-1], device=self.actions.device)
+        """
+        For FPO, return zeros for compatibility - actual computation happens in loss.
+        Return per-action-dimension log probs so pufferlib can call .mean(1) on them.
+        """
+        # value should have shape [batch, action_dim]
+        # Return [batch, action_dim] so .mean(1) gives [batch]
+        if value.dim() == 1:
+            # Single sample case
+            return torch.zeros_like(value, device=self.actions.device)
+        else:
+            # Batch case
+            return torch.zeros_like(value, device=self.actions.device)
     
     def entropy(self):
         """FPO doesn't have traditional entropy. Return zeros for compatibility."""
