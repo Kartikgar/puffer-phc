@@ -155,7 +155,7 @@ class FPOPolicy(PolicyWithDiscriminator):
         
         return fpo_dist, value
     
-    def compute_fpo_loss(self, obs, actions, advantages, old_values, returns):
+    def compute_fpo_loss(self, obs, actions, advantages, old_values, returns, config):
         """
         Custom FPO loss computation that should be called from the training loop.
         This replaces the standard PPO loss computation.
@@ -206,21 +206,31 @@ class FPOPolicy(PolicyWithDiscriminator):
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         # FPO policy loss (similar to PPO clipped objective)
-        clip_coef = 0.2  # Can be made configurable
+        # clip_coef = 0.2  # Can be made configurable
         surr1 = rho_s * advantages
-        surr2 = torch.clamp(rho_s, 1 - clip_coef, 1 + clip_coef) * advantages
+        surr2 = torch.clamp(rho_s, 1 - config.clip_coef, 1 + config.clip_coef) * advantages
         policy_loss = -(torch.min(surr1, surr2)).mean()
         
+        newvalue = self.critic_mlp(obs).squeeze()
         # Value loss
-        values = self.critic_mlp(obs).squeeze()
-        value_loss = F.mse_loss(values, returns)
+        if config.clip_vloss:
+                        v_loss_unclipped = (newvalue - ret) ** 2
+                        v_clipped = val + torch.clamp(
+                            newvalue - val,
+                            -config.vf_clip_coef,
+                            config.vf_clip_coef,
+                        )
+                        v_loss_clipped = (v_clipped - ret) ** 2
+                        v_loss = torch.max(v_loss_unclipped, v_loss_clipped).mean()
+        else:
+            v_loss = ((newvalue - ret) ** 2).mean()
         
         # Clear stored action info
         self.stored_action_info = None
         
         return {
             'policy_loss': policy_loss,
-            'value_loss': value_loss,
+            'value_loss': v_loss,
             'entropy_loss': torch.tensor(0.0, device=obs.device),  # No entropy in FPO
             'fpo_ratio': rho_s.mean(),
             'fpo_ratio_mean': rho_s.mean(),
